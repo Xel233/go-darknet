@@ -5,7 +5,7 @@ package godarknet
 #include <stdlib.h>
 #include <core.h>
 #cgo LDFLAGS: -ldl
-
+//description: ((return_data_type (*)(input_data_type))bridge_input_function_pointer) (bridge_input_value)
 int call_init(void *fn, const char* config, const char* weight, int gpu) {
 	return ((int (*)(const char*, const char*, int))fn)(config, weight, gpu);
 }
@@ -20,9 +20,9 @@ int call_dispose(void *fn, void* handle) {
 */
 import "C"
 import (
+	"errors"
 	"sync"
 	"unsafe"
-	"errors"
 )
 
 var (
@@ -37,7 +37,7 @@ func Open(libpath string) (dnet *Darknet, err error) {
 		defer func() {
 			C.free(unsafe.Pointer(clibpath))
 			mu.Unlock()
-		} ()
+		}()
 		if handle := C.dlopen(clibpath, C.RTLD_NOW); handle != nil {
 			dnet.handle = handle
 		} else {
@@ -57,7 +57,7 @@ func (this *Darknet) Init(config, weights string, gpu int) (err error) {
 		C.free(unsafe.Pointer(wgt))
 		C.free(unsafe.Pointer(cfunc))
 		mu.Unlock()
-	} ()
+	}()
 	if fn := C.dlsym(this.handle, cfunc); fn != nil {
 		if int(C.call_init(fn, cfg, wgt, C.int(gpu))) != 1 {
 			err = errors.New("init error")
@@ -68,7 +68,7 @@ func (this *Darknet) Init(config, weights string, gpu int) (err error) {
 	return
 }
 
-func(this *Darknet) Detect(imagePath string) (BboxList, error) {
+func (this *Darknet) Detect(imagePath string) (BboxList, error) {
 	cimg := C.CString(imagePath)
 	cfunc := C.CString("detect_image")
 	mu.Lock()
@@ -90,7 +90,7 @@ func(this *Darknet) Detect(imagePath string) (BboxList, error) {
 	return bboxes, err
 }
 
-func(this *Darknet) Close() error {
+func (this *Darknet) Close() error {
 	var err error
 	if this.handle != nil {
 		mu.Lock()
