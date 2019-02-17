@@ -1,50 +1,132 @@
 package godarknet
 
 /*
-#cgo CFLAGS: -I./
-#cgo LDFLAGS: -L./ -ldarknet
-#include "core.h"
+#include <dlfcn.h>
+#include <stdlib.h>
+#include <core.h>
+#cgo LDFLAGS: -ldl
+
+int call_init(void *fn, const char* config, const char* weight, int gpu) {
+	return ((int (*)(const char*, const char*, int))fn)(config, weight, gpu);
+}
+
+int call_detect_image(void *fn, const char* img_path, bbox_container* container) {
+	return ((int (*)(const char*, bbox_container*))fn)(img_path, container);
+}
+
+int call_dispose(void *fn, void* handle) {
+	return ((int (*)(void*))fn)(handle);
+}
 */
 import "C"
 import (
-	"errors"
 	"sync"
 	"unsafe"
+	"errors"
 )
 
 var (
 	mu sync.Mutex
 )
 
-func Init(conf, weights string, gpu int) int {
-	mu.Lock()
-	C.dispose()
-	cconf := C.CString(conf)
-	cweights := C.CString(weights)
-	defer func() {
-		C.free(unsafe.Pointer(cconf))
-		C.free(unsafe.Pointer(cweights))
-		mu.Unlock()
-	}()
-	return int(C.init(cconf, cweights, C.int(gpu)))
+func Open(libpath string) (dnet *Darknet, err error) {
+	dnet = new(Darknet)
+	if fileExists(libpath) {
+		clibpath := C.CString(libpath)
+		mu.Lock()
+		defer func() {
+			C.free(unsafe.Pointer(clibpath))
+			mu.Unlock()
+		} ()
+		if handle := C.dlopen(clibpath, C.RTLD_NOW); handle != nil {
+			dnet.handle = handle
+		} else {
+			err = dnet.catchErr()
+		}
+	}
+	return
 }
 
-func DetectImage(path string) (BboxList, error) {
-	bl := BboxList{}
-	if !fileExists(path) {
-		return bl, errors.New("no such file or dictionary")
-	}
+func (this *Darknet) Init(config, weights string, gpu int) (err error) {
+	cfg := C.CString(config)
+	wgt := C.CString(weights)
+	cfunc := C.CString("init")
 	mu.Lock()
-	cpath := C.CString(path)
 	defer func() {
-		C.free(unsafe.Pointer(cpath))
+		C.free(unsafe.Pointer(cfg))
+		C.free(unsafe.Pointer(wgt))
+		C.free(unsafe.Pointer(cfunc))
+		mu.Unlock()
+	} ()
+	if fn := C.dlsym(this.handle, cfunc); fn != nil {
+		if int(C.call_init(fn, cfg, wgt, C.int(gpu))) != 1 {
+			err = errors.New("init error")
+		}
+	} else {
+		err = this.catchErr()
+	}
+	return
+}
+
+func(this *Darknet) Detect(imagePath string) (BboxList, error) {
+	cimg := C.CString(imagePath)
+	cfunc := C.CString("detect_image")
+	mu.Lock()
+	defer func() {
+		C.free(unsafe.Pointer(cimg))
+		C.free(unsafe.Pointer(cfunc))
 		mu.Unlock()
 	}()
-	var cbboxes C.struct_bbox_t_container
-	if int(C.detect_image(cpath, &cbboxes)) > 0 {
-		bl = (*CbboxList)(&cbboxes).ToGo()
+	var err error
+	bboxes := BboxList{{}}
+	if fn := C.dlsym(this.handle, cfunc); fn != nil {
+		var cbboxes C.struct_bbox_t_container
+		if ret := int(C.call_detect_image(fn, cimg, &cbboxes)); ret == 1 {
+			bboxes = (*CbboxList)(&cbboxes).ToGo()
+		}
+	} else {
+		err = this.catchErr()
 	}
-	return bl, nil
+	return bboxes, err
+}
+
+func(this *Darknet) Close() error {
+	var err error
+	if this.handle != nil {
+		mu.Lock()
+		defer mu.Unlock()
+		err = this.dispose()
+		if err == nil {
+			if C.dlclose(this.handle) == 0 {
+				this.handle = nil
+			} else {
+				err = this.catchErr()
+			}
+		}
+	}
+	return err
+}
+
+func (this *Darknet) dispose() error {
+	cfunc := C.CString("dispose")
+	this.mu.Lock()
+	defer func() {
+		C.free(unsafe.Pointer(cfunc))
+		this.mu.Unlock()
+	}()
+	var err error
+	if fn := C.dlsym(this.handle, cfunc); fn != nil {
+		if int(C.call_dispose(fn, this.handle)) != 1 {
+			err = errors.New("dispose error")
+		}
+	} else {
+		err = this.catchErr()
+	}
+	return err
+}
+
+func (this *Darknet) catchErr() error {
+	return errors.New(C.GoString(C.dlerror()))
 }
 
 type CbboxList C.struct_bbox_t_container

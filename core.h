@@ -11,9 +11,3 @@ typedef struct bbox_t {
 typedef struct bbox_t_container {
     bbox candidates[C_SHARP_MAX_OBJECTS];
 } bbox_container;
-
-int init(const char*, const char*, int);
-
-int detect_image(const char*, bbox_container*);
-
-int dispose();
