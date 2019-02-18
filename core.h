@@ -1,5 +1,7 @@
 #include <stdlib.h>
-#define C_SHARP_MAX_OBJECTS 1000
+#include <dlfcn.h>
+
+#define C_MAX_OBJECTS 1000
 typedef struct bbox_t {
     unsigned int x, y, w, h;
     float prob;
@@ -9,5 +11,9 @@ typedef struct bbox_t {
 } bbox;
 
 typedef struct bbox_t_container {
-    bbox candidates[C_SHARP_MAX_OBJECTS];
+    bbox candidates[C_MAX_OBJECTS];
 } bbox_container;
+
+int call_init(void*, const char*, const char*, int);
+int call_detect_image(void*, const char*, bbox_container*);
+int call_dispose(void*, void*);

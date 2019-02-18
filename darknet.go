@@ -1,22 +1,8 @@
 package godarknet
 
 /*
-#include <dlfcn.h>
-#include <stdlib.h>
-#include <core.h>
+#include "core.h"
 #cgo LDFLAGS: -ldl
-//description: ((return_data_type (*)(input_data_type))bridge_input_function_pointer) (bridge_input_value)
-int call_init(void *fn, const char* config, const char* weight, int gpu) {
-	return ((int (*)(const char*, const char*, int))fn)(config, weight, gpu);
-}
-
-int call_detect_image(void *fn, const char* img_path, bbox_container* container) {
-	return ((int (*)(const char*, bbox_container*))fn)(img_path, container);
-}
-
-int call_dispose(void *fn, void* handle) {
-	return ((int (*)(void*))fn)(handle);
-}
 */
 import "C"
 import (
@@ -31,18 +17,16 @@ var (
 
 func Open(libpath string) (dnet *Darknet, err error) {
 	dnet = new(Darknet)
-	if fileExists(libpath) {
-		clibpath := C.CString(libpath)
-		mu.Lock()
-		defer func() {
-			C.free(unsafe.Pointer(clibpath))
-			mu.Unlock()
-		}()
-		if handle := C.dlopen(clibpath, C.RTLD_NOW); handle != nil {
-			dnet.handle = handle
-		} else {
-			err = dnet.catchErr()
-		}
+	clibpath := C.CString(libpath)
+	mu.Lock()
+	defer func() {
+		C.free(unsafe.Pointer(clibpath))
+		mu.Unlock()
+	}()
+	if handle := C.dlopen(clibpath, C.RTLD_NOW); handle != nil {
+		dnet.handle = handle
+	} else {
+		err = dnet.catchErr()
 	}
 	return
 }
